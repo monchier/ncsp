@@ -14,7 +14,6 @@ package ncsp
 
 import (
 	"bytes"
-	"errors"
 	"github.com/coreos/go-etcd/etcd"
 	"log"
 	"net"
@@ -41,9 +40,6 @@ type ReceiverChannelIntf interface {
 	/* *** Receive ***
 	 */
 	Receive() (error, *bytes.Buffer)
-	/* *** Close ***
-	 */
-	// Close() error
 }
 
 type SenderChannel struct {
@@ -198,7 +194,7 @@ func (ch *SenderChannel) send(addr string, message *bytes.Buffer) error {
 func (ch *SenderChannel) Send(message *bytes.Buffer) error {
 	if len(ch.Receivers) == 0 {
 		log.Println("no receivers")
-		return errors.New("no receivers")
+		return NewNcspError("no receivers")
 	}
 	for i := range ch.Receivers {
 		err := ch.send(ch.Receivers[i], message)
