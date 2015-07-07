@@ -3,7 +3,6 @@ package ncsp
 import (
 	"errors"
 	"github.com/coreos/go-etcd/etcd"
-	"log"
 )
 
 type NcspError struct {
@@ -32,7 +31,7 @@ func NewOptionError(msg string) *OptionError {
 
 func ErrCheckFatal(err error, msg string) {
 	if err != nil {
-		log.Fatal(msg, " : ", err)
+		Log.Fatal(msg, " : ", err)
 	}
 }
 

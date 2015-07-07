@@ -18,6 +18,8 @@ import (
 	"net"
 )
 
+/***************************************/
+
 type ChannelIntf interface {
 	/* *** Build ***
 	 */
@@ -41,6 +43,8 @@ type ReceiverChannelIntf interface {
 	Receive() (error, *bytes.Buffer)
 }
 
+/***************************************/
+
 type SenderChannel struct {
 	Receivers   []string
 	UpdatesChan chan *etcd.Response
@@ -53,28 +57,8 @@ func NewSenderChannel() *SenderChannel {
 	return &ch
 }
 
-func (ch *ReceiverChannel) Print() {
-}
-
-type receiverType struct {
-	buf  *bytes.Buffer
-	conn net.Conn // FIXME: should it be a pointer?
-}
-
-type ReceiverChannel struct {
-	Address string
-	// response channel
-	receiverChan chan receiverType
-}
-
-func NewReceiverChannel() *ReceiverChannel {
-	var ch ReceiverChannel
-	ch.receiverChan = make(chan receiverType)
-	return &ch
-}
-
 func (ch *SenderChannel) Print() {
-	Log.Debugln("Receivers: ", ch.Receivers)
+	Log.Infoln("Receivers: ", ch.Receivers)
 }
 
 func (ch *SenderChannel) Build(name string, opts *Options) error {
@@ -83,21 +67,23 @@ func (ch *SenderChannel) Build(name string, opts *Options) error {
 	// wait for updates (possibly new receivers) - watch changes -
 	// possibly fetch new receivers
 
+	Log.Infoln("Creating SenderChannel: ", name, "options: ", opts)
+
 	//FIXME: each channel may use the same client
 	machines := []string{"http://127.0.0.1:2379"}
 	c := etcd.NewClient(machines)
 	Log.Debugln("first attempt")
 	response, err := c.Get("/ncsp", true, true)
 	if err != nil {
-		Log.Debugln("etcd get failed")
+		Log.Errorln("etcd get failed")
 		return err
 	}
 	index := response.EtcdIndex
 	response, err = c.Get("/ncsp/"+name+"/receivers", true, true)
 	if err != nil {
-		Log.Debugln("Warning: channel not created yet")
+		Log.Warnln("channel not created yet")
 		if EtcdErrorCode(err) != 100 {
-			Log.Debugln("etcd get failed")
+			Log.Errorln("etcd get failed")
 			return err
 		}
 	} else {
@@ -121,10 +107,33 @@ func (ch *SenderChannel) Build(name string, opts *Options) error {
 	return nil
 }
 
+/***************************************/
+
+type receiverType struct {
+	buf  *bytes.Buffer
+	conn net.Conn // FIXME: should it be a pointer?
+}
+
+type ReceiverChannel struct {
+	Address string
+	// response channel
+	receiverChan chan receiverType
+}
+
+func NewReceiverChannel() *ReceiverChannel {
+	var ch ReceiverChannel
+	ch.receiverChan = make(chan receiverType)
+	return &ch
+}
+
+func (ch *ReceiverChannel) Print() {
+}
+
 func (ch *ReceiverChannel) Build(name string, opts *Options) error {
 	// update configuration
 	// start a sever and wait for messages (goroutine that delives to
 	// a channel)
+	Log.Infoln("Creating ReceiverChannel: ", name, "options: ", opts)
 	machines := []string{"http://127.0.0.1:2379"}
 	c := etcd.NewClient(machines)
 	address := "localhost:33333"
@@ -133,7 +142,7 @@ func (ch *ReceiverChannel) Build(name string, opts *Options) error {
 	Log.Debugln("updating address")
 	response, err := c.CreateInOrder("/ncsp/"+name+"/receivers", address, 0)
 	if err != nil {
-		Log.Debugln("etcd CreateInOrder")
+		Log.Errorln("etcd CreateInOrder")
 		return err
 	}
 	Log.Debugln("Receiver CreateInOrder done, index:", response.EtcdIndex)
@@ -173,18 +182,18 @@ func (ch *SenderChannel) send(addr string, message *bytes.Buffer) error {
 	defer conn.Close()                     // TODO: close...
 	Log.Debugln("Conn: ", conn)
 	if err != nil {
-		Log.Debugln("Dial error")
+		Log.Errorln("Dial error")
 		return err
 	}
 	err = SendMessage(conn, message)
 	if err != nil {
-		Log.Debugln("SendMessage failed")
+		Log.Errorln("SendMessage failed")
 		return err
 	}
 	buf := new(bytes.Buffer)
 	err = ReceiveMessage(conn, buf)
 	if err != nil {
-		Log.Debugln("ReceiveMessage failed")
+		Log.Errorln("ReceiveMessage failed")
 		return err
 	}
 	return nil
@@ -192,13 +201,13 @@ func (ch *SenderChannel) send(addr string, message *bytes.Buffer) error {
 
 func (ch *SenderChannel) Send(message *bytes.Buffer) error {
 	if len(ch.Receivers) == 0 {
-		Log.Debugln("no receivers")
+		Log.Errorln("no receivers")
 		return NewNcspError("no receivers")
 	}
 	for i := range ch.Receivers {
 		err := ch.send(ch.Receivers[i], message)
 		if err != nil {
-			Log.Debugln("send failed")
+			Log.Errorln("send failed")
 			return err
 		}
 	}
@@ -217,7 +226,7 @@ func (ch *ReceiverChannel) Receive() (*bytes.Buffer, error) {
 	ack := bytes.NewBufferString("ack")
 	err := SendMessage(conn, ack)
 	if err != nil {
-		Log.Debugln("SendMessage failed")
+		Log.Errorln("SendMessage failed")
 		return nil, err
 	}
 	conn.Close() // FIXME: check this

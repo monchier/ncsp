@@ -1,10 +1,8 @@
 package ncsp
 
 import (
-	// "errors"
 	"bytes"
 	"github.com/coreos/go-etcd/etcd"
-	"log"
 	"reflect"
 	"testing"
 	"time"
@@ -66,7 +64,7 @@ func prepare() {
 	if err != nil {
 		Log.Warnln("Warning: /ncsp not found")
 		if EtcdErrorCode(err) != 100 {
-			log.Fatal(err, "Get failed")
+			Log.Fatal(err, "Get failed")
 		}
 	} else {
 		_, err = c.Delete("/ncsp", true)
