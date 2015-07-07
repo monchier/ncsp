@@ -6,6 +6,8 @@ Only basic functionality is there. Work in progress...
 
 NCSP uses etcd for configuration. etcd needs to be running before any use of NCSP.
 
+Run go test for a simple sender/receiver example
+
 
 
 
