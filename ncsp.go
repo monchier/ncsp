@@ -3,26 +3,25 @@ package ncsp
 // TODO: error handling: pass down error messages, define
 // custom errors
 // TODO: logging, logging levels, log for errors
+// TODO: configuration
 // TODO: reduce verbosity
 // TODO: oop
 // TODO: TCPAddr
 // TODO: machines configuration
 // TODO: better unit tests
 // TODO: file organization
-// TODO: configuration
 // TODO: buffer
 
 import (
 	"bytes"
 	"github.com/coreos/go-etcd/etcd"
-	"log"
 	"net"
 )
 
 type ChannelIntf interface {
 	/* *** Build ***
 	 */
-	Build(name string, buffer uint32) error
+	Build(name string, opts *Options) error
 	/* *** Close ***
 	 */
 	// Close() error
@@ -75,10 +74,10 @@ func NewReceiverChannel() *ReceiverChannel {
 }
 
 func (ch *SenderChannel) Print() {
-	log.Println("Receivers: ", ch.Receivers)
+	Log.Debugln("Receivers: ", ch.Receivers)
 }
 
-func (ch *SenderChannel) Build(name string, buffer uint32) error {
+func (ch *SenderChannel) Build(name string, opts *Options) error {
 	// check if this channel exist already
 	// if it exists, fetch receiver(s) info and store locally
 	// wait for updates (possibly new receivers) - watch changes -
@@ -87,18 +86,18 @@ func (ch *SenderChannel) Build(name string, buffer uint32) error {
 	//FIXME: each channel may use the same client
 	machines := []string{"http://127.0.0.1:2379"}
 	c := etcd.NewClient(machines)
-	log.Println("first attempt")
+	Log.Debugln("first attempt")
 	response, err := c.Get("/ncsp", true, true)
 	if err != nil {
-		log.Println("etcd get failed")
+		Log.Debugln("etcd get failed")
 		return err
 	}
 	index := response.EtcdIndex
 	response, err = c.Get("/ncsp/"+name+"/receivers", true, true)
 	if err != nil {
-		log.Println("Warning: channel not created yet")
+		Log.Debugln("Warning: channel not created yet")
 		if EtcdErrorCode(err) != 100 {
-			log.Println("etcd get failed")
+			Log.Debugln("etcd get failed")
 			return err
 		}
 	} else {
@@ -122,7 +121,7 @@ func (ch *SenderChannel) Build(name string, buffer uint32) error {
 	return nil
 }
 
-func (ch *ReceiverChannel) Build(name string, buffer uint32) error {
+func (ch *ReceiverChannel) Build(name string, opts *Options) error {
 	// update configuration
 	// start a sever and wait for messages (goroutine that delives to
 	// a channel)
@@ -131,19 +130,19 @@ func (ch *ReceiverChannel) Build(name string, buffer uint32) error {
 	address := "localhost:33333"
 
 	// FIXME:what if duplicate?
-	log.Println("updating address")
+	Log.Debugln("updating address")
 	response, err := c.CreateInOrder("/ncsp/"+name+"/receivers", address, 0)
 	if err != nil {
-		log.Println("etcd CreateInOrder")
+		Log.Debugln("etcd CreateInOrder")
 		return err
 	}
-	log.Println("Receiver CreateInOrder done, index:", response.EtcdIndex)
+	Log.Debugln("Receiver CreateInOrder done, index:", response.EtcdIndex)
 
 	// Start server
 	ready := make(chan bool)
 	go func() {
 		// TODO: make sure the server is ready
-		log.Println("server goes here")
+		Log.Debugln("server goes here")
 		ln, err := net.Listen("tcp", ":33333")
 		ErrCheckFatal(err, "Listen error")
 		ready <- true
@@ -153,14 +152,14 @@ func (ch *ReceiverChannel) Build(name string, buffer uint32) error {
 			buf := new(bytes.Buffer)
 			err = ReceiveMessage(conn, buf)
 			ErrCheckFatal(err, "ReceiveMessage failed")
-			log.Println("Receiver writing msg to channel")
+			Log.Debugln("Receiver writing msg to channel")
 			ch.receiverChan <- receiverType{buf, conn}
-			log.Println("...sent")
+			Log.Debugln("...sent")
 		}
 	}()
-	log.Println("waiting for server to be ready")
+	Log.Debugln("waiting for server to be ready")
 	<-ready
-	log.Println("server is ready")
+	Log.Debugln("server is ready")
 
 	return nil
 }
@@ -172,20 +171,20 @@ func (ch *ReceiverChannel) Build(name string, buffer uint32) error {
 func (ch *SenderChannel) send(addr string, message *bytes.Buffer) error {
 	conn, err := net.Dial("tcp", ":33333") // TODO: use Receivers
 	defer conn.Close()                     // TODO: close...
-	log.Println("Conn: ", conn)
+	Log.Debugln("Conn: ", conn)
 	if err != nil {
-		log.Println("Dial error")
+		Log.Debugln("Dial error")
 		return err
 	}
 	err = SendMessage(conn, message)
 	if err != nil {
-		log.Println("SendMessage failed")
+		Log.Debugln("SendMessage failed")
 		return err
 	}
 	buf := new(bytes.Buffer)
 	err = ReceiveMessage(conn, buf)
 	if err != nil {
-		log.Println("ReceiveMessage failed")
+		Log.Debugln("ReceiveMessage failed")
 		return err
 	}
 	return nil
@@ -193,13 +192,13 @@ func (ch *SenderChannel) send(addr string, message *bytes.Buffer) error {
 
 func (ch *SenderChannel) Send(message *bytes.Buffer) error {
 	if len(ch.Receivers) == 0 {
-		log.Println("no receivers")
+		Log.Debugln("no receivers")
 		return NewNcspError("no receivers")
 	}
 	for i := range ch.Receivers {
 		err := ch.send(ch.Receivers[i], message)
 		if err != nil {
-			log.Println("send failed")
+			Log.Debugln("send failed")
 			return err
 		}
 	}
@@ -208,17 +207,17 @@ func (ch *SenderChannel) Send(message *bytes.Buffer) error {
 
 // TODO: byte buffer pointer
 func (ch *ReceiverChannel) Receive() (*bytes.Buffer, error) {
-	log.Println("blocking for message: ")
+	Log.Debugln("blocking for message: ")
 	tmp := <-ch.receiverChan
-	log.Println("...received")
+	Log.Debugln("...received")
 	response := tmp.buf
 	conn := tmp.conn
-	log.Println("got message: ", response, conn)
+	Log.Debugln("got message: ", response, conn)
 	// ack
 	ack := bytes.NewBufferString("ack")
 	err := SendMessage(conn, ack)
 	if err != nil {
-		log.Println("SendMessage failed")
+		Log.Debugln("SendMessage failed")
 		return nil, err
 	}
 	conn.Close() // FIXME: check this

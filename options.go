@@ -1,6 +1,8 @@
 package ncsp
 
 // TODO: refelct.Kind vs reflect.Type
+// TODO: add support for lists
+// TODO: each channel => its own option
 
 import (
 	"reflect"

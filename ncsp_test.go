@@ -5,48 +5,54 @@ import (
 	"bytes"
 	"github.com/coreos/go-etcd/etcd"
 	"log"
+	"reflect"
 	"testing"
 	"time"
 )
 
 func sender_process(done chan bool) {
-	log.Println("Sender process")
+	Log.Debugln("Sender process")
 	ch := NewSenderChannel()
-	// var ch SenderChannel
-	// time.Sleep(time.Second)
-	err := ch.Build("channel0", 0)
+	opts := NewOptions()
+	// TODO: make 1 call!
+	opts.AddOption("buffer", reflect.Uint32)
+	opts.SetOption("buffer", 0)
+	err := ch.Build("channel0", opts)
 	ErrCheckFatal(err, "Cannot build sender channel")
 	msg := bytes.NewBufferString("ciao")
 	err = ch.Send(msg)
 	for err != nil {
-		log.Println("Receiver not ready yet")
+		Log.Debugln("Receiver not ready yet")
 		time.Sleep(time.Second)
 		err = ch.Send(msg)
 	}
 	ErrCheckFatal(err, "Send failed")
-	log.Println("Sending")
+	Log.Debugln("Sending")
 	msg = bytes.NewBufferString("ciao again")
 	err = ch.Send(msg)
-	log.Println("... Send donw")
+	Log.Debugln("... Send done")
 	done <- true
 }
 
 func receiver_process(done chan bool) {
-	log.Println("Receiver process")
+	Log.Debugln("Receiver process")
 	ch := NewReceiverChannel()
 	// this start a server in the background
 	// each send/receive works on a
 	// different tcp connection
-	err := ch.Build("channel0", 0)
+	opts := NewOptions()
+	opts.AddOption("buffer", reflect.Uint32)
+	opts.SetOption("buffer", 0)
+	err := ch.Build("channel0", opts)
 	ErrCheckFatal(err, "Cannot build receiver channel")
-	log.Println("Receiving")
+	Log.Debugln("Receiving")
 	resp, err := ch.Receive()
 	ErrCheckFatal(err, "Receive failed")
-	log.Println("Response: ", resp)
-	log.Println("Receiving")
+	Log.Debugln("Response: ", resp)
+	Log.Debugln("Receiving")
 	resp, err = ch.Receive()
 	ErrCheckFatal(err, "Receive failed")
-	log.Println("Response: ", resp)
+	Log.Debugln("Response: ", resp)
 	done <- true
 }
 
@@ -58,7 +64,7 @@ func prepare() {
 	ErrCheckFatal(err, "Consistency")
 	_, err = c.Get("/ncsp", false, false)
 	if err != nil {
-		log.Println("Warning: /ncsp not found")
+		Log.Warnln("Warning: /ncsp not found")
 		if EtcdErrorCode(err) != 100 {
 			log.Fatal(err, "Get failed")
 		}
