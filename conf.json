@@ -3,7 +3,7 @@
         "machines": ["127.0.0.1:2379"]
     },
     "ncsp" : {
-        "base_port": 33333,
+        "base_port": 40000,
         "max_ports": 1024 
     },
 

@@ -22,13 +22,15 @@ func sender_process(done chan bool) {
 	for err != nil {
 		Log.Debugln("Receiver not ready yet")
 		time.Sleep(time.Second)
+		Log.Debugln("\tSending")
 		err = ch.Send(msg)
+		Log.Debugln("\t... Sent")
 	}
 	ErrCheckFatal(err, "Send failed")
-	Log.Debugln("Sending")
+	Log.Debugln("\tSending")
 	msg = bytes.NewBufferString("ciao again")
 	err = ch.Send(msg)
-	Log.Debugln("... Send done")
+	Log.Debugln("\t... Sent")
 	done <- true
 }
 
@@ -43,14 +45,14 @@ func receiver_process(done chan bool) {
 	opts.SetOption("buffer", 0)
 	err := ch.Build("channel0", opts)
 	ErrCheckFatal(err, "Cannot build receiver channel")
-	Log.Debugln("Receiving")
+	Log.Debugln("\tReceiving")
 	resp, err := ch.Receive()
 	ErrCheckFatal(err, "Receive failed")
-	Log.Debugln("Response: ", resp)
-	Log.Debugln("Receiving")
+	Log.Debugln("\tReceived: ", resp)
+	Log.Debugln("\tReceiving")
 	resp, err = ch.Receive()
 	ErrCheckFatal(err, "Receive failed")
-	Log.Debugln("Response: ", resp)
+	Log.Debugln("\tReceived: ", resp)
 	done <- true
 }
 
@@ -77,6 +79,9 @@ func prepare() {
 	ErrCheckFatal(err, "Creating root dir")
 }
 
+func shutdown() {
+}
+
 func Test1(t *testing.T) {
 	prepare()
 	done := make(chan bool)
@@ -84,4 +89,5 @@ func Test1(t *testing.T) {
 	go receiver_process(done)
 	<-done
 	<-done
+	shutdown()
 }

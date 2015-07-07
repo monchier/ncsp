@@ -8,13 +8,19 @@ package ncsp
 // TODO: oop/org (done)
 // TODO: machines configuration (done)
 // TODO: port selection (done)
-// TODO: TCPAddr
-// TODO: Local address
+// TODO: ack
+// TODO: Close and clean: Sender does not keep state in etcd; Receiver must clean up after itself
+// TODO: Sender should be able to check how many receiversa ure up
+// TODO: Shutdown
+// TODO: crashes
+// TODO: Multiple senders: bus
+// TODO: Multiple receivers: broadcast
 // TODO: better unit tests
 // TODO: add assertions in unit tests
+// TODO: TCPAddr
+// TODO: Local address
 // TODO: file organization
 // TODO: buffer
-// TODO: ack
 
 import (
 	"bytes"
@@ -78,7 +84,6 @@ func (ch *SenderChannel) Build(name string, opts *Options) error {
 	ErrCheckFatal(err, "Configuration error")
 	machines := ToEtcdMachinesList(option.([]interface{}))
 	c := etcd.NewClient(machines)
-	Log.Debugln("first attempt")
 	response, err := c.Get("/ncsp", true, true)
 	if err != nil {
 		Log.Errorln("etcd get failed")
@@ -94,6 +99,7 @@ func (ch *SenderChannel) Build(name string, opts *Options) error {
 		}
 	} else {
 		for i := range response.Node.Nodes {
+			Log.Debugln("Sender is adding a receiver to its list: ", response.Node.Nodes[i].Value)
 			ch.Receivers = append(ch.Receivers, response.Node.Nodes[i].Value)
 		}
 	}
@@ -107,6 +113,7 @@ func (ch *SenderChannel) Build(name string, opts *Options) error {
 		for {
 			resp := <-updates
 			index = resp.EtcdIndex
+			Log.Debugln("Sender is adding a receiver to its list: ", resp.Node.Value)
 			ch.Receivers = append(ch.Receivers, resp.Node.Value)
 		}
 	}()
@@ -146,36 +153,31 @@ func (ch *ReceiverChannel) Build(name string, opts *Options) error {
 	c := etcd.NewClient(machines)
 	address := "localhost:" + strconv.FormatUint(uint64(<-Config.Port), 10)
 	// FIXME:what if duplicate?
-	Log.Debugln("updating address: ", address)
-	response, err := c.CreateInOrder("/ncsp/"+name+"/receivers", address, 0)
+	Log.Debugln("receiver updating address in etcd: ", address)
+	_, err = c.CreateInOrder("/ncsp/"+name+"/receivers", address, 0)
 	if err != nil {
-		Log.Errorln("etcd CreateInOrder")
+		Log.Errorln("etcd CreateInOrder failed")
 		return err
 	}
-	Log.Debugln("Receiver CreateInOrder done, index:", response.EtcdIndex)
 
 	// Start server
 	ready := make(chan bool)
 	go func() {
 		// TODO: make sure the server is ready
-		Log.Debugln("server goes here")
-		ln, err := net.Listen("tcp", ":33333")
+		ln, err := net.Listen("tcp", address)
 		ErrCheckFatal(err, "Listen error")
 		ready <- true
 		for {
-			conn, err := ln.Accept() // TODO: how to close this?
+			conn, err := ln.Accept()
 			ErrCheckFatal(err, "Accept error")
 			buf := new(bytes.Buffer)
 			err = ReceiveMessage(conn, buf)
 			ErrCheckFatal(err, "ReceiveMessage failed")
-			Log.Debugln("Receiver writing msg to channel")
 			ch.receiverChan <- receiverType{buf, conn}
-			Log.Debugln("...sent")
 		}
 	}()
-	Log.Debugln("waiting for server to be ready")
 	<-ready
-	Log.Debugln("server is ready")
+	Log.Debugln("server (receiver) is ready")
 
 	return nil
 }
@@ -185,9 +187,12 @@ func (ch *ReceiverChannel) Build(name string, opts *Options) error {
 // }
 
 func (ch *SenderChannel) send(addr string, message *bytes.Buffer) error {
-	conn, err := net.Dial("tcp", ":33333") // TODO: use Receivers
-	defer conn.Close()                     // TODO: close...
-	Log.Debugln("Conn: ", conn)
+	if len(ch.Receivers) > 1 {
+		Log.Fatal("Supporting only one receiver per channel for now")
+	}
+	address := ch.Receivers[0]
+	conn, err := net.Dial("tcp", address)
+	defer conn.Close()
 	if err != nil {
 		Log.Errorln("Dial error")
 		return err
@@ -221,14 +226,11 @@ func (ch *SenderChannel) Send(message *bytes.Buffer) error {
 	return nil
 }
 
-// TODO: byte buffer pointer
 func (ch *ReceiverChannel) Receive() (*bytes.Buffer, error) {
-	Log.Debugln("blocking for message: ")
 	tmp := <-ch.receiverChan
-	Log.Debugln("...received")
 	response := tmp.buf
 	conn := tmp.conn
-	Log.Debugln("got message: ", response, conn)
+	Log.Debugln("got message: ", response, "connection: ", conn)
 	// FIXME: replace string message 'ack'
 	ack := bytes.NewBufferString("ack")
 	err := SendMessage(conn, ack)
