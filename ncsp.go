@@ -20,7 +20,7 @@ package ncsp
 // TODO: TCPAddr
 // TODO: Local address
 // TODO: file organization
-// TODO: buffer
+// TODO: buffered channels
 
 import (
 	"bytes"
@@ -163,7 +163,7 @@ func (ch *ReceiverChannel) Build(name string, opts *Options) error {
 	// Start server
 	ready := make(chan bool)
 	go func() {
-		// TODO: make sure the server is ready
+		// TODO: are we really sure that server is ready?
 		ln, err := net.Listen("tcp", address)
 		ErrCheckFatal(err, "Listen error")
 		ready <- true

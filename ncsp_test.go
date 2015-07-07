@@ -13,6 +13,7 @@ func sender_process(done chan bool) {
 	ch := NewSenderChannel()
 	opts := NewOptions()
 	// TODO: make 1 call!
+	// TODO: maybe Options is an overkill?
 	opts.AddOption("buffer", reflect.Uint32)
 	opts.SetOption("buffer", 0)
 	err := ch.Build("channel0", opts)
@@ -63,7 +64,7 @@ func prepare() {
 	ErrCheckFatal(err, "Configuration error")
 	machines := ToEtcdMachinesList(option.([]interface{}))
 	c := etcd.NewClient(machines)
-	err = c.SetConsistency(etcd.STRONG_CONSISTENCY)
+	err = c.SetConsistency(etcd.STRONG_CONSISTENCY) // TODO: is this valid for other clients as well?
 	ErrCheckFatal(err, "Consistency")
 	_, err = c.Get("/ncsp", false, false)
 	if err != nil {
@@ -80,8 +81,25 @@ func prepare() {
 }
 
 func shutdown() {
+	Log.Debugln("Start shutdown (ie etcd cleanup)")
+	option, err := Config.GetOption("etcd.machines")
+	ErrCheckFatal(err, "Configuration error")
+	machines := ToEtcdMachinesList(option.([]interface{}))
+	c := etcd.NewClient(machines)
+	_, err = c.Get("/ncsp", false, false)
+	if err != nil {
+		Log.Warnln("Warning: /ncsp not found")
+		if EtcdErrorCode(err) != 100 {
+			Log.Fatal(err, "Get failed")
+		}
+	} else {
+		_, err = c.Delete("/ncsp", true)
+		ErrCheckFatal(err, "Cannot delete")
+	}
+	Log.Infoln("Shutdown done and etcd has been cleaned up")
 }
 
+// Very basic 1 sender - 1 receiver test
 func Test1(t *testing.T) {
 	prepare()
 	done := make(chan bool)
