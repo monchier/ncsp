@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func sender_process(done chan bool) {
+func sender_1_1_process(done chan bool) {
 	Log.Debugln("Sender process")
 	ch := NewSenderChannel()
 	opts := NewOptions()
@@ -35,7 +35,7 @@ func sender_process(done chan bool) {
 	done <- true
 }
 
-func receiver_process(done chan bool) {
+func receiver_1_1_process(done chan bool) {
 	Log.Debugln("Receiver process")
 	ch := NewReceiverChannel()
 	// this start a server in the background
@@ -103,8 +103,8 @@ func shutdown() {
 func Test1(t *testing.T) {
 	prepare()
 	done := make(chan bool)
-	go sender_process(done)
-	go receiver_process(done)
+	go sender_1_1_process(done)
+	go receiver_1_1_process(done)
 	<-done
 	<-done
 	shutdown()
