@@ -56,9 +56,12 @@ func receiver_process(done chan bool) {
 
 func prepare() {
 	// cleanup
-	machines := []string{"http://127.0.0.1:2379"}
+	Config.Init("conf.json")
+	option, err := Config.GetOption("etcd.machines")
+	ErrCheckFatal(err, "Configuration error")
+	machines := ToEtcdMachinesList(option.([]interface{}))
 	c := etcd.NewClient(machines)
-	err := c.SetConsistency(etcd.STRONG_CONSISTENCY)
+	err = c.SetConsistency(etcd.STRONG_CONSISTENCY)
 	ErrCheckFatal(err, "Consistency")
 	_, err = c.Get("/ncsp", false, false)
 	if err != nil {

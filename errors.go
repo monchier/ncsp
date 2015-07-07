@@ -29,6 +29,15 @@ func NewOptionError(msg string) *OptionError {
 	return &e
 }
 
+type ConfigError struct {
+	NcspError
+}
+
+func NewConfigError(msg string) *ConfigError {
+	var e ConfigError
+	e.err = errors.New(msg)
+	return &e
+}
 func ErrCheckFatal(err error, msg string) {
 	if err != nil {
 		Log.Fatal(msg, " : ", err)

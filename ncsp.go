@@ -1,21 +1,26 @@
 package ncsp
 
 // TODO: error handling: pass down error messages, define
-// custom errors
-// TODO: logging, logging levels, log for errors
-// TODO: configuration
-// TODO: reduce verbosity
-// TODO: oop
+// custom errors (done)
+// TODO: logging, logging levels, log for errors (done)
+// TODO: configuration (done)
+// TODO: reduce verbosity (done)
+// TODO: oop/org (done)
+// TODO: machines configuration (done)
+// TODO: port selection (done)
 // TODO: TCPAddr
-// TODO: machines configuration
+// TODO: Local address
 // TODO: better unit tests
+// TODO: add assertions in unit tests
 // TODO: file organization
 // TODO: buffer
+// TODO: ack
 
 import (
 	"bytes"
 	"github.com/coreos/go-etcd/etcd"
 	"net"
+	"strconv"
 )
 
 /***************************************/
@@ -69,8 +74,9 @@ func (ch *SenderChannel) Build(name string, opts *Options) error {
 
 	Log.Infoln("Creating SenderChannel: ", name, "options: ", opts)
 
-	//FIXME: each channel may use the same client
-	machines := []string{"http://127.0.0.1:2379"}
+	option, err := Config.GetOption("etcd.machines")
+	ErrCheckFatal(err, "Configuration error")
+	machines := ToEtcdMachinesList(option.([]interface{}))
 	c := etcd.NewClient(machines)
 	Log.Debugln("first attempt")
 	response, err := c.Get("/ncsp", true, true)
@@ -134,12 +140,13 @@ func (ch *ReceiverChannel) Build(name string, opts *Options) error {
 	// start a sever and wait for messages (goroutine that delives to
 	// a channel)
 	Log.Infoln("Creating ReceiverChannel: ", name, "options: ", opts)
-	machines := []string{"http://127.0.0.1:2379"}
+	option, err := Config.GetOption("etcd.machines")
+	ErrCheckFatal(err, "Configuration error")
+	machines := ToEtcdMachinesList(option.([]interface{}))
 	c := etcd.NewClient(machines)
-	address := "localhost:33333"
-
+	address := "localhost:" + strconv.FormatUint(uint64(<-Config.Port), 10)
 	// FIXME:what if duplicate?
-	Log.Debugln("updating address")
+	Log.Debugln("updating address: ", address)
 	response, err := c.CreateInOrder("/ncsp/"+name+"/receivers", address, 0)
 	if err != nil {
 		Log.Errorln("etcd CreateInOrder")
@@ -222,13 +229,13 @@ func (ch *ReceiverChannel) Receive() (*bytes.Buffer, error) {
 	response := tmp.buf
 	conn := tmp.conn
 	Log.Debugln("got message: ", response, conn)
-	// ack
+	// FIXME: replace string message 'ack'
 	ack := bytes.NewBufferString("ack")
 	err := SendMessage(conn, ack)
 	if err != nil {
 		Log.Errorln("SendMessage failed")
 		return nil, err
 	}
-	conn.Close() // FIXME: check this
+	conn.Close()
 	return response, err
 }

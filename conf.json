@@ -1,0 +1,22 @@
+{
+    "etcd" : {
+        "machines": ["127.0.0.1:2379"]
+    },
+    "ncsp" : {
+        "base_port": 33333,
+        "max_ports": 1024 
+    },
+
+    "test": {
+        "sub1" : {
+            "machines": ["127.0.0.1:2379"]
+        },
+        "sub2" : {
+            "machines": ["127.0.77.1:555"]
+        }
+    },
+    "module2":
+        {"option1": ["p1", "p2"]},
+    "module3":
+        {"option1": 3}
+}
