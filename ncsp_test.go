@@ -2,13 +2,14 @@ package ncsp
 
 import (
 	"bytes"
+	"crypto/rand"
 	"github.com/coreos/go-etcd/etcd"
 	"reflect"
 	"testing"
 	"time"
 )
 
-func sender_1_1_process(done chan bool) {
+func sender_1_1_process(done chan bool, messages chan []byte) {
 	Log.Debugln("Sender process")
 	ch := NewSenderChannel()
 	opts := NewOptions()
@@ -18,24 +19,29 @@ func sender_1_1_process(done chan bool) {
 	opts.SetOption("buffer", 0)
 	err := ch.Build("channel0", opts)
 	ErrCheckFatal(err, "Cannot build sender channel")
-	msg := bytes.NewBufferString("ciao")
-	err = ch.Send(msg)
-	for err != nil {
-		Log.Debugln("Receiver not ready yet")
-		time.Sleep(time.Second)
-		Log.Debugln("\tSending")
+
+	for j := 1; j < 100; j++ {
+		buf := make([]byte, 16)
+		_, err = rand.Read(buf)
+		ErrCheckFatal(err, "Random number error")
+		messages <- buf
+
+		msg := bytes.NewBuffer(buf)
 		err = ch.Send(msg)
-		Log.Debugln("\t... Sent")
+		for err != nil {
+			Log.Debugln("Receiver not ready yet")
+			time.Sleep(time.Second)
+			Log.Debugln("\tSending")
+			err = ch.Send(msg)
+			Log.Debugln("\t... Sent")
+		}
+		ErrCheckFatal(err, "Send failed")
 	}
-	ErrCheckFatal(err, "Send failed")
-	Log.Debugln("\tSending")
-	msg = bytes.NewBufferString("ciao again")
-	err = ch.Send(msg)
-	Log.Debugln("\t... Sent")
+
 	done <- true
 }
 
-func receiver_1_1_process(done chan bool) {
+func receiver_1_1_process(done chan bool, messages chan []byte) {
 	Log.Debugln("Receiver process")
 	ch := NewReceiverChannel()
 	// this start a server in the background
@@ -46,14 +52,20 @@ func receiver_1_1_process(done chan bool) {
 	opts.SetOption("buffer", 0)
 	err := ch.Build("channel0", opts)
 	ErrCheckFatal(err, "Cannot build receiver channel")
-	Log.Debugln("\tReceiving")
-	resp, err := ch.Receive()
-	ErrCheckFatal(err, "Receive failed")
-	Log.Debugln("\tReceived: ", resp)
-	Log.Debugln("\tReceiving")
-	resp, err = ch.Receive()
-	ErrCheckFatal(err, "Receive failed")
-	Log.Debugln("\tReceived: ", resp)
+
+	for j := 1; j < 100; j++ {
+		Log.Debugln("\tReceiving")
+		resp, err := ch.Receive()
+		ErrCheckFatal(err, "Receive failed")
+		buf := <-messages
+		Log.Debugln("\tReceived: ", resp.Bytes(), " - source: ", buf)
+		for i := range resp.Bytes() {
+			if resp.Bytes()[i] != buf[i] {
+				Log.Fatal("Receivd wrong data - i: ", i, " resp[i]: ", resp.Bytes()[i], "buf[i]: ", buf[i])
+			}
+		}
+	}
+
 	done <- true
 }
 
@@ -103,8 +115,9 @@ func shutdown() {
 func Test1(t *testing.T) {
 	prepare()
 	done := make(chan bool)
-	go sender_1_1_process(done)
-	go receiver_1_1_process(done)
+	messages := make(chan []byte, 1)
+	go sender_1_1_process(done, messages)
+	go receiver_1_1_process(done, messages)
 	<-done
 	<-done
 	shutdown()

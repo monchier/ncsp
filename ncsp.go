@@ -230,7 +230,7 @@ func (ch *ReceiverChannel) Receive() (*bytes.Buffer, error) {
 	tmp := <-ch.receiverChan
 	response := tmp.buf
 	conn := tmp.conn
-	Log.Debugln("got message: ", response, "connection: ", conn)
+	Log.Debugln("got message, ", response.Bytes(), "connection: ", conn)
 	// FIXME: replace string message 'ack'
 	ack := bytes.NewBufferString("ack")
 	err := SendMessage(conn, ack)
