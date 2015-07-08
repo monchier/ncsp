@@ -5,6 +5,7 @@ import (
 	"testing"
 )
 
+// TODO: validators
 func TestOptions(t *testing.T) {
 	Log.Debugln("Testing options.go")
 	opts := NewOptions()
@@ -22,7 +23,18 @@ func TestOptions(t *testing.T) {
 	value := opts.GetOption("test")
 	Log.Debugln("value of the option is ", value)
 	if reflect.TypeOf(value).Kind() != reflect.Bool {
-		Log.Fatal("TestOption: Returned object with wrong type")
+		Log.Fatal("TestOption: Returned object with wrong type: ", reflect.TypeOf(value).Kind())
+	}
+	opts.AddOption("list_option", reflect.Slice)
+	aSlice := []string{"value1", "value2"}
+	err = opts.SetOption("list_option", aSlice)
+	if err != nil {
+		Log.Fatal("TestOption: Failed to set option", err)
+	}
+	list_value := opts.GetOption("list_option")
+	Log.Debugln("value of the option is ", list_value)
+	if reflect.TypeOf(list_value).Kind() != reflect.Slice {
+		Log.Fatal("TestOption: Returned object with wrong type: ", reflect.TypeOf(value).Kind())
 	}
 }
 

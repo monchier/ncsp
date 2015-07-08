@@ -39,7 +39,3 @@ func (o *Options) SetOption(name string, value interface{}) error {
 func (o Options) GetOption(name string) interface{} {
 	return o.values[name]
 }
-
-func (o *Options) ParseJson(jsonConf interface{}) error {
-	return nil
-}
