@@ -15,8 +15,8 @@ package ncsp
 // TODO: crashes
 // TODO: Multiple senders: bus
 // TODO: Multiple receivers: broadcast
-// TODO: better unit tests
-// TODO: add assertions in unit tests
+// TODO: better unit tests and add new tests
+// TODO: add assertions in unit tests (done)
 // TODO: TCPAddr
 // TODO: Local address
 // TODO: file organization
@@ -187,11 +187,7 @@ func (ch *ReceiverChannel) Build(name string, opts *Options) error {
 // }
 
 func (ch *SenderChannel) send(addr string, message *bytes.Buffer) error {
-	if len(ch.Receivers) > 1 {
-		Log.Fatal("Supporting only one receiver per channel for now")
-	}
-	address := ch.Receivers[0]
-	conn, err := net.Dial("tcp", address)
+	conn, err := net.Dial("tcp", addr)
 	defer conn.Close()
 	if err != nil {
 		Log.Errorln("Dial error")
