@@ -8,11 +8,11 @@ NCSP uses etcd for configuration. etcd needs to be running before any use of NCS
 
 Run go test for a simple sender/receiver example
 
-## example usage:
+## example usage
 Error handling has been removed from the code. Look at [ncsp_test.go](http://github.com/monchier/ncsp/blob/master/ncsp_test.go) for details
 
 
-Receiver:
+#### Receiver:
 ```
 	ch := NewReceiverChannel()                // Create a new empty receiver channel
 	opts := NewOptions()                      // Initialize and set options
@@ -26,7 +26,7 @@ Receiver:
 	                                          // ack back and return received message
 ```
 
-Sender:
+#### Sender:
 ```
 	ch := NewSenderChannel()                  // Create a new empty receiver channel
 	opts := NewOptions()                      // Initialize and set options
