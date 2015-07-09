@@ -8,7 +8,7 @@ NCSP uses etcd for configuration. etcd needs to be running before any use of NCS
 
 Run go test for a simple sender/receiver example
 
-## Example usage:
+## example usage:
 Error handling has been removed from the code. Look at [ncsp_test.go](http://github.com/monchier/ncsp/blob/master/ncsp_test.go) for details
 
 
