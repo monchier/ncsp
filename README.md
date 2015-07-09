@@ -9,6 +9,7 @@ NCSP uses etcd for configuration. etcd needs to be running before any use of NCS
 Run go test for a simple sender/receiver example
 
 ## Example usage:
+Error handling has been removed from the code. Look at [ncsp_test.go](http://github.com/monchier/ncsp/blob/master/ncsp_test.go) for details
 
 
 Receiver:
@@ -17,6 +18,7 @@ Receiver:
 	opts := NewOptions()                      // Initialize and set options
 	opts.AddOption("buffer", reflect.Uint32)  // Initialize and set options
 	opts.SetOption("buffer", 0)               // Initialize and set options
+	
 	err := ch.Build("channel0", opts)         // Build channel with a given name and options
 	                                          // This step instantiate a receiver-side server 
 	                                          // for incoming requests
@@ -30,6 +32,7 @@ Sender:
 	opts := NewOptions()                      // Initialize and set options
 	opts.AddOption("buffer", reflect.Uint32)  // Initialize and set options
 	opts.SetOption("buffer", 0)               // Initialize and set options
+	
 	buf := make([]byte, 16)                   // Initialize byte buffer 
 	_, err = rand.Read(buf)                   // Fill the buffer with random bits
 	msg := bytes.NewBuffer(buf)               // Create a bytes.Buffer
