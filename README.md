@@ -20,7 +20,7 @@ Receiver:
 	opts.SetOption("buffer", 0)               // Initialize and set options
 	
 	err := ch.Build("channel0", opts)         // Build channel with a given name and options
-	                                          // This step instantiate a receiver-side server 
+	                                          // This step instantiates a receiver-side server 
 	                                          // for incoming requests
 	resp, err := ch.Receive()                 // Block and receive. When a message is received 
 	                                          // ack back and return received message
