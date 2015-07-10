@@ -22,6 +22,7 @@ Note: the code below is intentianlly high level and abstracts from details. It w
 	err := ch.Build("channel0", opts)         // Build channel with a given name and options
 	                                          // This step instantiates a receiver-side server 
 	                                          // for incoming requests
+	                                          
 	resp, err := ch.Receive()                 // Block and receive. When a message is received 
 	                                          // ack back and return received message
 ```
@@ -32,6 +33,10 @@ Note: the code below is intentianlly high level and abstracts from details. It w
 	opts := NewOptions()                      // Initialize and set options
 	opts.AddOption("buffer", reflect.Uint32)  // Initialize and set options
 	opts.SetOption("buffer", 0)               // Initialize and set options
+	
+	err := ch.Build("channel0", opts)         // Build channel with a given name and options
+						  // The channel checks for existing receivers and watch 
+						  // for new receivers that may join later 
 	
 	buf := make([]byte, 16)                   // Initialize byte buffer 
 	_, err = rand.Read(buf)                   // Fill the buffer with random bits
