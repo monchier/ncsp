@@ -1,14 +1,5 @@
 package ncsp
 
-// TODO: error handling: pass down error messages, define
-// custom errors (done)
-// TODO: logging, logging levels, log for errors (done)
-// TODO: configuration (done)
-// TODO: reduce verbosity (done)
-// TODO: oop/org (done)
-// TODO: machines configuration (done)
-// TODO: port selection (done)
-// TODO: ack
 // TODO: Close and clean: Sender does not keep state in etcd; Receiver must clean up after itself
 // TODO: Sender should be able to check how many receiversa ure up
 // TODO: Shutdown
@@ -227,9 +218,7 @@ func (ch *ReceiverChannel) Receive() (*bytes.Buffer, error) {
 	response := tmp.buf
 	conn := tmp.conn
 	Log.Debugln("got message, ", response.Bytes(), "connection: ", conn)
-	// FIXME: replace string message 'ack'
-	ack := bytes.NewBufferString("ack")
-	err := SendMessage(conn, ack)
+	err := SendZero(conn)
 	if err != nil {
 		Log.Errorln("SendMessage failed")
 		return nil, err
