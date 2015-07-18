@@ -9,10 +9,11 @@ package ncsp
 // TODO: TCPAddr
 // TODO: Local address
 // TODO: file organization
-// TODO: buffered channels
+// TODO: buffered channels: will it work with new receiver?
 // TODO: Method to check if a channel is closed
 // TODO: stats module
 // TODO: test generates its own config file
+// TODO: add receiver timeout
 
 import (
 	"bytes"
