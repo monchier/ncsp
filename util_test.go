@@ -3,6 +3,7 @@ package ncsp
 import (
 	"reflect"
 	"testing"
+	"time"
 )
 
 // TODO: validators
@@ -52,4 +53,33 @@ func TestConfig(t *testing.T) {
 	if option.([]interface{})[0] != "127.0.0.1:2379" {
 		Log.Fatal("TestConfig: GetOption failed")
 	}
+}
+
+func TestBroadcaster(t *testing.T) {
+	b := NewBroadcaster(2)
+	done := make(chan bool)
+	for i := 0; i < 100; i++ {
+		go func(b *Broadcaster, done chan bool, id int) {
+			ch := b.Listen()
+			if <-ch != true {
+				Log.Fatal("Broadcaster failed")
+			}
+			if <-ch != false {
+				Log.Fatal("Broadcaster failed")
+			}
+			done <- true
+		}(b, done, i)
+	}
+	for err := b.Write(true, 2); err != nil; {
+		time.Sleep(100 * time.Millisecond)
+		err = b.Write(true, 2)
+	}
+	for err := b.Write(false, 2); err != nil; {
+		time.Sleep(100 * time.Millisecond)
+		err = b.Write(false, 2)
+	}
+	for i := 0; i < 100; i++ {
+		<-done
+	}
+	Log.Info("Broadcaster test done.")
 }

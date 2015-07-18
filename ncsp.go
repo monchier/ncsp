@@ -6,18 +6,19 @@ package ncsp
 // TODO: crashes
 // TODO: Multiple senders: bus
 // TODO: Multiple receivers: broadcast
-// TODO: better unit tests and add new tests
-// TODO: add assertions in unit tests (done)
 // TODO: TCPAddr
 // TODO: Local address
 // TODO: file organization
 // TODO: buffered channels
+// TODO: Method to check if a channel is closed
 
 import (
 	"bytes"
 	"github.com/coreos/go-etcd/etcd"
 	"net"
+	"reflect"
 	"strconv"
+	"time"
 )
 
 /***************************************/
@@ -50,12 +51,14 @@ type ReceiverChannelIntf interface {
 type SenderChannel struct {
 	Receivers   []string
 	UpdatesChan chan *etcd.Response
+	broadcaster *Broadcaster
 }
 
 func NewSenderChannel() *SenderChannel {
 	var ch SenderChannel
 	ch.Receivers = make([]string, 0)
 	ch.UpdatesChan = make(chan *etcd.Response)
+	ch.broadcaster = NewBroadcaster(1)
 	return &ch
 }
 
@@ -81,31 +84,63 @@ func (ch *SenderChannel) Build(name string, opts *Options) error {
 		return err
 	}
 	index := response.EtcdIndex
-	response, err = c.Get("/ncsp/"+name+"/receivers", true, true)
-	if err != nil {
-		Log.Warnln("channel not created yet")
-		if EtcdErrorCode(err) != 100 {
-			Log.Errorln("etcd get failed")
-			return err
-		}
-	} else {
-		for i := range response.Node.Nodes {
-			Log.Debugln("Sender is adding a receiver to its list: ", response.Node.Nodes[i].Value)
-			ch.Receivers = append(ch.Receivers, response.Node.Nodes[i].Value)
-		}
-	}
+	// response, err = c.Get("/ncsp/"+name+"/receivers", true, true)
+	// if err != nil {
+	// 	Log.Warnln("channel not created yet")
+	// 	if EtcdErrorCode(err) != 100 {
+	// 		Log.Errorln("etcd get failed")
+	// 		return err
+	// 	}
+	// } else {
+	// 	Log.Debug("...>", response.Node.Nodes)
+	// 	for i := range response.Node.Nodes {
+	// 		Log.Debug("...>", response.Node.Nodes[i])
+	// 		Log.Debugln("Sender is adding a receiver to its list: ", response.Node.Nodes[i].Value)
+	// 		ch.Receivers = append(ch.Receivers, response.Node.Nodes[i].Value)
+	// 		if len(ch.Receivers) > 1 {
+	// 			Log.Fatal("supporting only 1 receiver per channel, receivers:", ch.Receivers, len(ch.Receivers))
+	// 		}
+	// 	}
+	// }
 	go func() {
 		updates := make(chan *etcd.Response)
 		go func() {
 			// TODO: what if multiple changes?
-			_, err := c.Watch("/ncsp/"+name+"/receivers", index, true, updates, nil)
-			ErrCheckFatal(err, "Etcd Watch error")
+			stop := ch.broadcaster.Listen()
+			_, err := c.Watch("/ncsp/"+name+"/receivers", index, true, updates, stop)
+			Log.Warnln("Etcd Watch error:", err)
 		}()
+		updatesStop := ch.broadcaster.Listen()
 		for {
-			resp := <-updates
-			index = resp.EtcdIndex
-			Log.Debugln("Sender is adding a receiver to its list: ", resp.Node.Value)
-			ch.Receivers = append(ch.Receivers, resp.Node.Value)
+			// FIXME: triggered on every updates!.. what happen on a delete?
+			// FIXME: maybe just go and re-read
+			// getting multiple updates, why?
+			select {
+			case resp := <-updates:
+				if resp != nil {
+					Log.Debugln("->", reflect.TypeOf(resp))
+					Log.Debugln("->", resp)
+					Log.Debugln("->", resp.Node)
+					switch resp.Action {
+					case "set":
+						Log.Debugln("Sender is adding a receiver to its list: ", resp.Node.Value)
+						ch.Receivers = append(ch.Receivers, resp.Node.Value)
+						if len(ch.Receivers) > 1 {
+							Log.Fatal("supporting only 1 receiver per channel, receivers:", ch.Receivers, len(ch.Receivers))
+						}
+					case "delete":
+						Log.Warnln("delete Not implemented")
+						// Log.Debugln("Sender removing a receiver to its list: ", resp.Node.Value)
+						// for i, e := range ch.Receivers {
+						// 	if e ==
+						// }
+						// ch.Receivers = append(ch.Receivers[:i], ch.Receivers[i+1:]...)
+					}
+				}
+			case <-updatesStop:
+				Log.Debugln("Exiting update loop")
+				break
+			}
 		}
 	}()
 	return nil
@@ -119,14 +154,17 @@ type receiverType struct {
 }
 
 type ReceiverChannel struct {
+	Name    string
 	Address string
 	// response channel
 	receiverChan chan receiverType
+	broadcaster  *Broadcaster
 }
 
 func NewReceiverChannel() *ReceiverChannel {
 	var ch ReceiverChannel
 	ch.receiverChan = make(chan receiverType)
+	ch.broadcaster = NewBroadcaster(1)
 	return &ch
 }
 
@@ -134,6 +172,7 @@ func (ch *ReceiverChannel) Print() {
 }
 
 func (ch *ReceiverChannel) Build(name string, opts *Options) error {
+	ch.Name = name
 	// update configuration
 	// start a sever and wait for messages (goroutine that delives to
 	// a channel)
@@ -142,12 +181,12 @@ func (ch *ReceiverChannel) Build(name string, opts *Options) error {
 	ErrCheckFatal(err, "Configuration error")
 	machines := ToEtcdMachinesList(option.([]interface{}))
 	c := etcd.NewClient(machines)
+	// FIXME: localhost
 	address := "localhost:" + strconv.FormatUint(uint64(<-Config.Port), 10)
-	// FIXME:what if duplicate?
-	Log.Debugln("receiver updating address in etcd: ", address)
-	_, err = c.CreateInOrder("/ncsp/"+name+"/receivers", address, 0)
+	ch.Address = address
+	_, err = c.Set("/ncsp/"+name+"/receivers/"+address, address, 0)
 	if err != nil {
-		Log.Errorln("etcd CreateInOrder failed")
+		Log.Errorln("etcd Set has")
 		return err
 	}
 
@@ -157,14 +196,27 @@ func (ch *ReceiverChannel) Build(name string, opts *Options) error {
 		// TODO: are we really sure that server is ready?
 		ln, err := net.Listen("tcp", address)
 		ErrCheckFatal(err, "Listen error")
+		// FIXME: this will not terminate!
+		ln.(*net.TCPListener).SetDeadline(time.Now().Add(5000 * time.Millisecond))
 		ready <- true
+		stop := ch.broadcaster.Listen()
 		for {
-			conn, err := ln.Accept()
-			ErrCheckFatal(err, "Accept error")
-			buf := new(bytes.Buffer)
-			err = ReceiveMessage(conn, buf)
-			ErrCheckFatal(err, "ReceiveMessage failed")
-			ch.receiverChan <- receiverType{buf, conn}
+			select {
+			case <-stop:
+				Log.Debugln("Exiting TCP accept loop")
+				break
+			default:
+				conn, err := ln.Accept()
+				if err, ok := err.(*net.OpError); ok && err.Timeout() {
+					//Log.Errorln("Accept timeout", err)
+					continue
+				}
+				ErrCheckFatal(err, "Accept error")
+				buf := new(bytes.Buffer)
+				err = ReceiveMessage(conn, buf)
+				ErrCheckFatal(err, "ReceiveMessage failed")
+				ch.receiverChan <- receiverType{buf, conn}
+			}
 		}
 	}()
 	<-ready
@@ -173,9 +225,42 @@ func (ch *ReceiverChannel) Build(name string, opts *Options) error {
 	return nil
 }
 
-// func (ch *ReceiverChannel) Close() error {
-// 	return nil
-// }
+// FIXME: Close should stop the services!
+func (ch *ReceiverChannel) Close() error {
+	// FIXME: multiple receivers
+	// FIXME: localhost
+	option, err := Config.GetOption("etcd.machines")
+	ErrCheckFatal(err, "Configuration error")
+	machines := ToEtcdMachinesList(option.([]interface{}))
+	c := etcd.NewClient(machines)
+	_, err = c.Delete("/ncsp/"+ch.Name, true)
+	if err != nil {
+		Log.Errorln("Delete error", err)
+		return err
+	}
+
+	for err = ch.broadcaster.Write(true, 1); err != nil; {
+		time.Sleep(100 * time.Millisecond)
+		err = ch.broadcaster.Write(true, 1)
+	}
+	Log.Infoln("Closed receiver channel")
+	return nil
+}
+
+func (ch *SenderChannel) Close() error {
+	// FIXME: multiple receivers
+	// FIXME: localhost
+	ch.Receivers = nil
+
+	Log.Debugln("brodcasting stop signal")
+	for err := ch.broadcaster.Write(true, 2); err != nil; {
+		Log.Debugln("wait")
+		time.Sleep(100 * time.Millisecond)
+		err = ch.broadcaster.Write(true, 2)
+	}
+	Log.Infoln("Closed sender channel")
+	return nil
+}
 
 func (ch *SenderChannel) send(addr string, message *bytes.Buffer) error {
 	conn, err := net.Dial("tcp", addr)
@@ -204,6 +289,7 @@ func (ch *SenderChannel) Send(message *bytes.Buffer) error {
 		return NewNcspError("no receivers")
 	}
 	for i := range ch.Receivers {
+		Log.Debugln("To: ", ch.Receivers[i]) // FIXME: receiver is not valid!!
 		err := ch.send(ch.Receivers[i], message)
 		if err != nil {
 			Log.Errorln("send failed")

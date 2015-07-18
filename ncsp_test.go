@@ -20,7 +20,7 @@ func sender_1_1_process(done chan bool, messages chan []byte) {
 	err := ch.Build("channel0", opts)
 	ErrCheckFatal(err, "Cannot build sender channel")
 
-	for j := 1; j < 100; j++ {
+	for j := 0; j < 100; j++ {
 		buf := make([]byte, 16)
 		_, err = rand.Read(buf)
 		ErrCheckFatal(err, "Random number error")
@@ -37,8 +37,8 @@ func sender_1_1_process(done chan bool, messages chan []byte) {
 		}
 		ErrCheckFatal(err, "Send failed")
 	}
-
 	done <- true
+	ch.Close()
 }
 
 func receiver_1_1_process(done chan bool, messages chan []byte) {
@@ -53,7 +53,7 @@ func receiver_1_1_process(done chan bool, messages chan []byte) {
 	err := ch.Build("channel0", opts)
 	ErrCheckFatal(err, "Cannot build receiver channel")
 
-	for j := 1; j < 100; j++ {
+	for j := 0; j < 100; j++ {
 		Log.Debugln("\tReceiving")
 		resp, err := ch.Receive()
 		ErrCheckFatal(err, "Receive failed")
@@ -67,6 +67,63 @@ func receiver_1_1_process(done chan bool, messages chan []byte) {
 	}
 
 	done <- true
+	ch.Close()
+}
+
+func sender_many_1_process(n int, how_many int, done chan bool) {
+	Log.Debugln("Sender process")
+	for i := 0; i < how_many; i++ {
+		go func(n int, i int, done chan bool) {
+			Log.Debugln("sender goroutine", i)
+			ch := NewSenderChannel()
+			opts := NewOptions()
+			opts.AddOption("buffer", reflect.Uint32)
+			opts.SetOption("buffer", 0)
+			err := ch.Build("channel0", opts)
+			ErrCheckFatal(err, "Cannot build sender channel")
+
+			for j := 0; j < n; j++ {
+				buf := make([]byte, 16)
+				_, err = rand.Read(buf)
+				ErrCheckFatal(err, "Random number error")
+
+				msg := bytes.NewBuffer(buf)
+				err = ch.Send(msg)
+				for err != nil {
+					Log.Debugln("Receiver not ready yet")
+					time.Sleep(time.Second)
+					Log.Debugln("\tSending")
+					err = ch.Send(msg)
+					Log.Debugln("\t... Sent")
+				}
+				ErrCheckFatal(err, "Send failed")
+			}
+			done <- true
+			ch.Close()
+		}(n, i, done)
+	}
+}
+
+func receiver_many_1_process(n int, how_many int, done chan bool) {
+	Log.Debugln("Receiver process")
+	ch := NewReceiverChannel()
+	// this start a server in the background
+	// each send/receive works on a
+	// different tcp connection
+	opts := NewOptions()
+	opts.AddOption("buffer", reflect.Uint32)
+	opts.SetOption("buffer", 0)
+	err := ch.Build("channel0", opts)
+	ErrCheckFatal(err, "Cannot build receiver channel")
+
+	for j := 0; j < n*how_many; j++ {
+		Log.Debugln("\tReceiving ", j)
+		resp, err := ch.Receive()
+		ErrCheckFatal(err, "Receive failed")
+		Log.Debugln("\tReceived: ", resp.Bytes())
+	}
+	done <- true
+	ch.Close()
 }
 
 func prepare() {
@@ -111,7 +168,7 @@ func shutdown() {
 	Log.Infoln("Shutdown done and etcd has been cleaned up")
 }
 
-// Very basic 1 sender - 1 receiver test
+// Test1: Very basic 1 sender - 1 receiver test
 func Test1(t *testing.T) {
 	prepare()
 	done := make(chan bool)
@@ -120,5 +177,23 @@ func Test1(t *testing.T) {
 	go receiver_1_1_process(done, messages)
 	<-done
 	<-done
+	shutdown()
+}
+
+// Test2: Many sender test
+// FIXME: add data check
+// FIXME: it seems we keep adding channels to etcd even if a channel is already there
+func Test2(t *testing.T) {
+	prepare()
+	done := make(chan bool)
+	how_many := int(10)
+	n := int(10)
+	go sender_many_1_process(n, how_many, done)
+	go receiver_many_1_process(n, how_many, done)
+	for j := 0; j < how_many+1; j++ {
+		<-done
+		Log.Debugln("---> Done", j)
+	}
+	Log.Debugln("---> Shutting down")
 	shutdown()
 }
