@@ -11,6 +11,8 @@ package ncsp
 // TODO: file organization
 // TODO: buffered channels
 // TODO: Method to check if a channel is closed
+// TODO: stats module
+// TODO: test generates its own config file
 
 import (
 	"bytes"
@@ -158,13 +160,12 @@ type ReceiverChannel struct {
 	Address string
 	// response channel
 	receiverChan chan receiverType
-	broadcaster  *Broadcaster
+	Listener     net.Listener
 }
 
 func NewReceiverChannel() *ReceiverChannel {
 	var ch ReceiverChannel
 	ch.receiverChan = make(chan receiverType)
-	ch.broadcaster = NewBroadcaster(1)
 	return &ch
 }
 
@@ -190,42 +191,16 @@ func (ch *ReceiverChannel) Build(name string, opts *Options) error {
 		return err
 	}
 
-	// Start server
-	ready := make(chan bool)
-	go func() {
-		// TODO: are we really sure that server is ready?
-		ln, err := net.Listen("tcp", address)
-		ErrCheckFatal(err, "Listen error")
-		// FIXME: this will not terminate!
-		ln.(*net.TCPListener).SetDeadline(time.Now().Add(5000 * time.Millisecond))
-		ready <- true
-		stop := ch.broadcaster.Listen()
-		for {
-			select {
-			case <-stop:
-				Log.Debugln("Exiting TCP accept loop")
-				break
-			default:
-				conn, err := ln.Accept()
-				if err, ok := err.(*net.OpError); ok && err.Timeout() {
-					//Log.Errorln("Accept timeout", err)
-					continue
-				}
-				ErrCheckFatal(err, "Accept error")
-				buf := new(bytes.Buffer)
-				err = ReceiveMessage(conn, buf)
-				ErrCheckFatal(err, "ReceiveMessage failed")
-				ch.receiverChan <- receiverType{buf, conn}
-			}
-		}
-	}()
-	<-ready
-	Log.Debugln("server (receiver) is ready")
+	ch.Listener, err = net.Listen("tcp", ch.Address)
+	if err != nil {
+		Log.Errorln(err, "Listen error")
+		return err
+	}
 
 	return nil
 }
 
-// FIXME: Close should stop the services!
+// FIXME: Should this be blocking?! Is listener up?
 func (ch *ReceiverChannel) Close() error {
 	// FIXME: multiple receivers
 	// FIXME: localhost
@@ -237,11 +212,6 @@ func (ch *ReceiverChannel) Close() error {
 	if err != nil {
 		Log.Errorln("Delete error", err)
 		return err
-	}
-
-	for err = ch.broadcaster.Write(true, 1); err != nil; {
-		time.Sleep(100 * time.Millisecond)
-		err = ch.broadcaster.Write(true, 1)
 	}
 	Log.Infoln("Closed receiver channel")
 	return nil
@@ -300,11 +270,16 @@ func (ch *SenderChannel) Send(message *bytes.Buffer) error {
 }
 
 func (ch *ReceiverChannel) Receive() (*bytes.Buffer, error) {
-	tmp := <-ch.receiverChan
-	response := tmp.buf
-	conn := tmp.conn
+	Log.Debugln("receive")
+	conn, err := ch.Listener.Accept()
+	response := new(bytes.Buffer)
+	err = ReceiveMessage(conn, response)
+	if err != nil {
+		Log.Errorln(err, "Receive error")
+		return nil, err
+	}
 	Log.Debugln("got message, ", response.Bytes(), "connection: ", conn)
-	err := SendZero(conn)
+	err = SendZero(conn)
 	if err != nil {
 		Log.Errorln("SendMessage failed")
 		return nil, err

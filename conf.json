@@ -4,7 +4,7 @@
     },
     "ncsp" : {
         "base_port": 40000,
-        "max_ports": 1024 
+        "max_ports": 1024
     },
 
     "test": {
