@@ -107,9 +107,6 @@ func sender_many_1_process(n int, how_many int, done chan bool) {
 func receiver_many_1_process(n int, how_many int, done chan bool) {
 	Log.Debugln("Receiver process")
 	ch := NewReceiverChannel()
-	// this start a server in the background
-	// each send/receive works on a
-	// different tcp connection
 	opts := NewOptions()
 	opts.AddOption("buffer", reflect.Uint32)
 	opts.SetOption("buffer", 0)
