@@ -14,6 +14,7 @@ package ncsp
 // TODO: stats module
 // TODO: test generates its own config file
 // TODO: add receiver timeout
+// TODO: look more at the watch loop... may be a race
 
 import (
 	"bytes"
@@ -87,31 +88,16 @@ func (ch *SenderChannel) Build(name string, opts *Options) error {
 		return err
 	}
 	index := response.EtcdIndex
-	// response, err = c.Get("/ncsp/"+name+"/receivers", true, true)
-	// if err != nil {
-	// 	Log.Warnln("channel not created yet")
-	// 	if EtcdErrorCode(err) != 100 {
-	// 		Log.Errorln("etcd get failed")
-	// 		return err
-	// 	}
-	// } else {
-	// 	Log.Debug("...>", response.Node.Nodes)
-	// 	for i := range response.Node.Nodes {
-	// 		Log.Debug("...>", response.Node.Nodes[i])
-	// 		Log.Debugln("Sender is adding a receiver to its list: ", response.Node.Nodes[i].Value)
-	// 		ch.Receivers = append(ch.Receivers, response.Node.Nodes[i].Value)
-	// 		if len(ch.Receivers) > 1 {
-	// 			Log.Fatal("supporting only 1 receiver per channel, receivers:", ch.Receivers, len(ch.Receivers))
-	// 		}
-	// 	}
-	// }
+	// Handle updates: please verify I always get all updates
+	// TODO: how do watch handle past updates? looks like there might be a race here
+	// Look at how index works
 	go func() {
 		updates := make(chan *etcd.Response)
 		go func() {
 			// TODO: what if multiple changes?
 			stop := ch.broadcaster.Listen()
 			_, err := c.Watch("/ncsp/"+name+"/receivers", index, true, updates, stop)
-			Log.Warnln("Etcd Watch error:", err)
+			Log.Debugln("Etcd Watch error:", err)
 		}()
 		updatesStop := ch.broadcaster.Listen()
 		for {
@@ -132,7 +118,7 @@ func (ch *SenderChannel) Build(name string, opts *Options) error {
 							Log.Fatal("supporting only 1 receiver per channel, receivers:", ch.Receivers, len(ch.Receivers))
 						}
 					case "delete":
-						Log.Warnln("delete Not implemented")
+						Log.Debugln("delete Not implemented")
 						// Log.Debugln("Sender removing a receiver to its list: ", resp.Node.Value)
 						// for i, e := range ch.Receivers {
 						// 	if e ==

@@ -10,5 +10,6 @@ var Log = &logrus.Logger{
 	//	Formatter: new(logrus.JSONFormatter),
 	Formatter: new(logrus.TextFormatter),
 	Hooks:     make(logrus.LevelHooks),
-	Level:     logrus.DebugLevel,
+	// Level:     logrus.DebugLevel,
+	Level: logrus.InfoLevel,
 }

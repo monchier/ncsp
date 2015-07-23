@@ -86,7 +86,7 @@ func sender_many_1_process(n int, how_many int, done chan bool) {
 				buf := make([]byte, 16)
 				_, err = rand.Read(buf)
 				ErrCheckFatal(err, "Random number error")
-
+				// add a unique ID here
 				msg := bytes.NewBuffer(buf)
 				err = ch.Send(msg)
 				for err != nil {
@@ -115,7 +115,6 @@ func receiver_many_1_process(n int, how_many int, done chan bool) {
 	opts.SetOption("buffer", 0)
 	err := ch.Build("channel0", opts)
 	ErrCheckFatal(err, "Cannot build receiver channel")
-
 	for j := 0; j < n*how_many; j++ {
 		Log.Debugln("\tReceiving ", j)
 		resp, err := ch.Receive()
@@ -186,8 +185,8 @@ func Test1(t *testing.T) {
 func Test2(t *testing.T) {
 	prepare()
 	done := make(chan bool)
-	how_many := int(10)
-	n := int(10)
+	how_many := int(100)
+	n := int(100)
 	go sender_many_1_process(n, how_many, done)
 	go receiver_many_1_process(n, how_many, done)
 	for j := 0; j < how_many+1; j++ {
