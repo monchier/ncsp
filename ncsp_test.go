@@ -3,6 +3,7 @@ package ncsp
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/sha1"
 	"github.com/coreos/go-etcd/etcd"
 	"reflect"
 	"testing"
@@ -70,10 +71,10 @@ func receiver_1_1_process(done chan bool, messages chan []byte) {
 	ch.Close()
 }
 
-func sender_many_1_process(n int, how_many int, done chan bool) {
+func sender_many_1_process(n int, how_many int, done chan bool, table map[int][sha1.Size]byte) {
 	Log.Debugln("Sender process")
 	for i := 0; i < how_many; i++ {
-		go func(n int, i int, done chan bool) {
+		go func(n int, i int, done chan bool, table map[int][sha1.Size]byte) {
 			Log.Debugln("sender goroutine", i)
 			ch := NewSenderChannel()
 			opts := NewOptions()
@@ -85,9 +86,14 @@ func sender_many_1_process(n int, how_many int, done chan bool) {
 			for j := 0; j < n; j++ {
 				buf := make([]byte, 16)
 				_, err = rand.Read(buf)
+				table[i*n+j] = sha1.Sum(buf)
 				ErrCheckFatal(err, "Random number error")
 				// add a unique ID here
-				msg := bytes.NewBuffer(buf)
+				msg := new(bytes.Buffer)
+				_, err = msg.WriteRune(rune(i*n + j))
+				ErrCheckFatal(err, "Write buffer error")
+				_, err = msg.Write(buf)
+				ErrCheckFatal(err, "Write buffer error")
 				err = ch.Send(msg)
 				for err != nil {
 					Log.Debugln("Receiver not ready yet")
@@ -100,11 +106,11 @@ func sender_many_1_process(n int, how_many int, done chan bool) {
 			}
 			done <- true
 			ch.Close()
-		}(n, i, done)
+		}(n, i, done, table)
 	}
 }
 
-func receiver_many_1_process(n int, how_many int, done chan bool) {
+func receiver_many_1_process(n int, how_many int, done chan bool, table map[int][sha1.Size]byte) {
 	Log.Debugln("Receiver process")
 	ch := NewReceiverChannel()
 	opts := NewOptions()
@@ -116,7 +122,18 @@ func receiver_many_1_process(n int, how_many int, done chan bool) {
 		Log.Debugln("\tReceiving ", j)
 		resp, err := ch.Receive()
 		ErrCheckFatal(err, "Receive failed")
-		Log.Debugln("\tReceived: ", resp.Bytes())
+		id, _, err := resp.ReadRune()
+		ErrCheckFatal(err, "Failed reading")
+		if len(resp.Bytes()) != 16 {
+			Log.Fatal("received #", len(resp.Bytes()), "bytes")
+		}
+		sha := sha1.Sum(resp.Bytes())
+		Log.Debugln("\tReceived, id:", id, "bytes: ", resp.Bytes(), "sha", sha)
+		for i := range sha {
+			if table[int(id)][i] != sha[i] {
+				Log.Fatal("Receivd wrong data - id:", int(id), "i: ", i, " sha[i]: ", sha[i], "table[id][i]: ", table[int(id)][i])
+			}
+		}
 	}
 	done <- true
 	ch.Close()
@@ -184,8 +201,9 @@ func Test2(t *testing.T) {
 	done := make(chan bool)
 	how_many := int(100)
 	n := int(100)
-	go sender_many_1_process(n, how_many, done)
-	go receiver_many_1_process(n, how_many, done)
+	table := make(map[int][sha1.Size]byte)
+	go sender_many_1_process(n, how_many, done, table)
+	go receiver_many_1_process(n, how_many, done, table)
 	for j := 0; j < how_many+1; j++ {
 		<-done
 		Log.Debugln("---> Done", j)

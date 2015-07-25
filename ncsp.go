@@ -11,7 +11,6 @@ package ncsp
 // TODO: file organization
 // TODO: buffered channels: will it work with new receiver?
 // TODO: Method to check if a channel is closed
-// TODO: stats module
 // TODO: test generates its own config file
 // TODO: add receiver timeout
 // TODO: look more at the watch loop... may be a race
@@ -33,7 +32,7 @@ type ChannelIntf interface {
 	Build(name string, opts *Options) error
 	/* *** Close ***
 	 */
-	// Close() error
+	Close() error
 }
 
 type SenderChannelIntf interface {
