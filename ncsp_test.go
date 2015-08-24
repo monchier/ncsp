@@ -202,12 +202,16 @@ func Test2(t *testing.T) {
 	how_many := int(100)
 	n := int(100)
 	table := make(map[int][sha1.Size]byte)
+	start := time.Now()
 	go sender_many_1_process(n, how_many, done, table)
 	go receiver_many_1_process(n, how_many, done, table)
 	for j := 0; j < how_many+1; j++ {
 		<-done
 		Log.Debugln("---> Done", j)
 	}
+	end := time.Now()
+	elapsed := end.Sub(start)
+	Log.Infoln("Time elapsed [ms]:", float64(elapsed)/1e6, "Req/s:", float64(how_many)*float64(n)/float64(elapsed)*1e9)
 	Log.Debugln("---> Shutting down")
 	shutdown()
 }

@@ -75,7 +75,7 @@ func (ch *SenderChannel) Build(name string, opts *Options) error {
 	// wait for updates (possibly new receivers) - watch changes -
 	// possibly fetch new receivers
 
-	Log.Infoln("Creating SenderChannel: ", name, "options: ", opts)
+	Log.Debugln("Creating SenderChannel: ", name, "options: ", opts)
 
 	option, err := Config.GetOption("etcd.machines")
 	ErrCheckFatal(err, "Configuration error")
@@ -199,7 +199,7 @@ func (ch *ReceiverChannel) Close() error {
 		Log.Errorln("Delete error", err)
 		return err
 	}
-	Log.Infoln("Closed receiver channel")
+	Log.Debugln("Closed receiver channel")
 	return nil
 }
 
@@ -214,7 +214,7 @@ func (ch *SenderChannel) Close() error {
 		time.Sleep(100 * time.Millisecond)
 		err = ch.broadcaster.Write(true, 2)
 	}
-	Log.Infoln("Closed sender channel")
+	Log.Debugln("Closed sender channel")
 	return nil
 }
 
@@ -241,7 +241,7 @@ func (ch *SenderChannel) send(addr string, message *bytes.Buffer) error {
 
 func (ch *SenderChannel) Send(message *bytes.Buffer) error {
 	if len(ch.Receivers) == 0 {
-		Log.Errorln("no receivers")
+		Log.Debugln("no receivers")
 		return NewNcspError("no receivers")
 	}
 	for i := range ch.Receivers {
