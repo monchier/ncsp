@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"crypto/sha1"
 	"github.com/coreos/go-etcd/etcd"
+	"net/http"
+	_ "net/http/pprof"
 	"reflect"
 	"testing"
 	"time"
@@ -71,10 +73,10 @@ func receiver_1_1_process(done chan bool, messages chan []byte) {
 	ch.Close()
 }
 
-func sender_many_1_process(n int, how_many int, done chan bool, table map[int][sha1.Size]byte) {
+func sender_many_1_process(n int, how_many int, done chan bool, objects [][]byte) {
 	Log.Debugln("Sender process")
 	for i := 0; i < how_many; i++ {
-		go func(n int, i int, done chan bool, table map[int][sha1.Size]byte) {
+		go func(n int, i int, done chan bool, objects [][]byte) {
 			Log.Debugln("sender goroutine", i)
 			ch := NewSenderChannel()
 			opts := NewOptions()
@@ -84,15 +86,11 @@ func sender_many_1_process(n int, how_many int, done chan bool, table map[int][s
 			ErrCheckFatal(err, "Cannot build sender channel")
 
 			for j := 0; j < n; j++ {
-				buf := make([]byte, 16)
-				_, err = rand.Read(buf)
-				table[i*n+j] = sha1.Sum(buf)
-				ErrCheckFatal(err, "Random number error")
 				// add a unique ID here
 				msg := new(bytes.Buffer)
 				_, err = msg.WriteRune(rune(i*n + j))
 				ErrCheckFatal(err, "Write buffer error")
-				_, err = msg.Write(buf)
+				_, err = msg.Write(objects[i*n+j])
 				ErrCheckFatal(err, "Write buffer error")
 				err = ch.Send(msg)
 				for err != nil {
@@ -106,7 +104,7 @@ func sender_many_1_process(n int, how_many int, done chan bool, table map[int][s
 			}
 			done <- true
 			ch.Close()
-		}(n, i, done, table)
+		}(n, i, done, objects)
 	}
 }
 
@@ -197,13 +195,25 @@ func Test1(t *testing.T) {
 // FIXME: add data check
 // FIXME: it seems we keep adding channels to etcd even if a channel is already there
 func Test2(t *testing.T) {
+	go func() {
+		Log.Infoln(http.ListenAndServe("localhost:6060", nil))
+	}()
 	prepare()
 	done := make(chan bool)
 	how_many := int(100)
 	n := int(100)
+
+	// generate files
+	objects := make([][]byte, how_many*n)
 	table := make(map[int][sha1.Size]byte)
+	for i := 0; i < how_many*n; i++ {
+		objects[i] = make([]byte, 16)
+		_, err := rand.Read(objects[i])
+		ErrCheckFatal(err, "Random number error")
+		table[i] = sha1.Sum(objects[i])
+	}
 	start := time.Now()
-	go sender_many_1_process(n, how_many, done, table)
+	go sender_many_1_process(n, how_many, done, objects)
 	go receiver_many_1_process(n, how_many, done, table)
 	for j := 0; j < how_many+1; j++ {
 		<-done
