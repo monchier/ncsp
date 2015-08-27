@@ -10,11 +10,13 @@ import (
 var Config = &NcspConfig{
 	JsonConf: new(interface{}),
 	Port:     make(chan uint32),
+	started:  false,
 }
 
 type NcspConfig struct {
 	JsonConf *interface{} // Configuration data structure
 	Port     chan uint32  // Next available port
+	started  bool
 }
 
 func (n *NcspConfig) Init(filename string) error {
@@ -29,7 +31,12 @@ func (n *NcspConfig) Init(filename string) error {
 		Log.Errorln("decoding config file error: ", err)
 		return err
 	}
-	go n.generatePortLoop()
+	// FIXME: Unsure I like this
+	if n.started == false {
+		Log.Debugln("Starting generatePortLoop")
+		go n.generatePortLoop()
+		n.started = true
+	}
 	return nil
 }
 
@@ -65,6 +72,7 @@ func ToEtcdMachinesList(in []interface{}) []string {
 
 func (n *NcspConfig) generatePortLoop() {
 	// FIXME: need wrapper/ validators
+	Log.Debugln("generatePortLoop")
 	option, err := Config.GetOption("ncsp.base_port")
 	ErrCheckFatal(err, "Configuration error")
 	base_port := uint32(option.(float64))
@@ -73,6 +81,7 @@ func (n *NcspConfig) generatePortLoop() {
 	max_ports := uint32(option.(float64))
 	for {
 		for i := base_port; i < base_port+max_ports; i++ {
+			Log.Debug("generationg port", i)
 			n.Port <- i
 		}
 	}

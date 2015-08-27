@@ -111,7 +111,7 @@ func (ch *SenderChannel) Build(name string, opts *Options) error {
 					Log.Debugln("->", resp.Node)
 					switch resp.Action {
 					case "set":
-						Log.Debugln("Sender is adding a receiver to its list: ", resp.Node.Value)
+						Log.Debugln("Sender is adding a receiver to its list: ", resp.Node.Value, len(ch.Receivers))
 						ch.Receivers = append(ch.Receivers, resp.Node.Value)
 						if len(ch.Receivers) > 1 {
 							Log.Fatal("supporting only 1 receiver per channel, receivers:", ch.Receivers, len(ch.Receivers))
@@ -161,15 +161,14 @@ func (ch *ReceiverChannel) Print() {
 func (ch *ReceiverChannel) Build(name string, opts *Options) error {
 	ch.Name = name
 	// update configuration
-	// start a sever and wait for messages (goroutine that delives to
-	// a channel)
-	Log.Infoln("Creating ReceiverChannel: ", name, "options: ", opts)
+	Log.Debugln("Creating ReceiverChannel: ", name, "options: ", opts)
 	option, err := Config.GetOption("etcd.machines")
 	ErrCheckFatal(err, "Configuration error")
 	machines := ToEtcdMachinesList(option.([]interface{}))
 	c := etcd.NewClient(machines)
 	// FIXME: localhost
 	address := "localhost:" + strconv.FormatUint(uint64(<-Config.Port), 10)
+	Log.Debug("receiver address:", address)
 	ch.Address = address
 	_, err = c.Set("/ncsp/"+name+"/receivers/"+address, address, 0)
 	if err != nil {
@@ -220,7 +219,7 @@ func (ch *SenderChannel) Close() error {
 
 func (ch *SenderChannel) send(addr string, message *bytes.Buffer) error {
 	conn, err := net.Dial("tcp", addr)
-	defer conn.Close()
+	defer conn.Close() // Race here??
 	if err != nil {
 		Log.Errorln("Dial error")
 		return err

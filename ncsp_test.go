@@ -8,6 +8,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -137,6 +138,75 @@ func receiver_many_1_process(n int, how_many int, done chan bool, table map[int]
 	ch.Close()
 }
 
+func sender_many_many_process(n int, how_many int, done chan bool, objects [][]byte) {
+	Log.Debugln("Sender process")
+	for i := 0; i < how_many; i++ {
+		go func(n int, i int, done chan bool, objects [][]byte) {
+			Log.Debugln("sender goroutine", i)
+			ch := NewSenderChannel()
+			opts := NewOptions()
+			opts.AddOption("buffer", reflect.Uint32)
+			opts.SetOption("buffer", 0)
+			err := ch.Build("channel"+strconv.Itoa(i), opts)
+			ErrCheckFatal(err, "Cannot build sender channel")
+
+			for j := 0; j < n; j++ {
+				// add a unique ID here
+				msg := new(bytes.Buffer)
+				_, err = msg.WriteRune(rune(i*n + j))
+				ErrCheckFatal(err, "Write buffer error")
+				_, err = msg.Write(objects[i*n+j])
+				ErrCheckFatal(err, "Write buffer error")
+				err = ch.Send(msg)
+				for err != nil {
+					Log.Debugln("Receiver not ready yet")
+					time.Sleep(time.Second)
+					Log.Debugln("\tSending")
+					err = ch.Send(msg)
+					Log.Debugln("\t... Sent")
+				}
+				ErrCheckFatal(err, "Send failed")
+			}
+			done <- true
+			ch.Close()
+		}(n, i, done, objects)
+	}
+}
+func receiver_many_many_process(n int, how_many int, done chan bool, table map[int][sha1.Size]byte) {
+	Log.Debugln("Receiver process")
+	chs := make([]*ReceiverChannel, how_many)
+	for i := 0; i < how_many; i++ {
+		chs[i] = NewReceiverChannel()
+		opts := NewOptions()
+		opts.AddOption("buffer", reflect.Uint32)
+		opts.SetOption("buffer", 0)
+		err := chs[i].Build("channel"+strconv.Itoa(i), opts)
+		ErrCheckFatal(err, "Cannot build receiver channel: "+strconv.Itoa(i))
+	}
+	for i := 0; i < how_many; i++ {
+		go func(ch *ReceiverChannel, done chan bool, table map[int][sha1.Size]byte) {
+			for j := 0; j < n; j++ {
+				Log.Debugln("\tReceiving ", j)
+				resp, err := ch.Receive()
+				ErrCheckFatal(err, "Receive failed")
+				id, _, err := resp.ReadRune()
+				ErrCheckFatal(err, "Failed reading")
+				if len(resp.Bytes()) != 16 {
+					Log.Fatal("received #", len(resp.Bytes()), "bytes")
+				}
+				sha := sha1.Sum(resp.Bytes())
+				Log.Debugln("\tReceived, id:", id, "bytes: ", resp.Bytes(), "sha", sha)
+				for k := range sha {
+					if table[int(id)][k] != sha[k] {
+						Log.Fatal("Receivd wrong data - id:", int(id), "k: ", k, " sha[i]: ", sha[k], "table[id][k]: ", table[int(id)][k])
+					}
+				}
+			}
+			done <- true
+			ch.Close()
+		}(chs[i], done, table)
+	}
+}
 func prepare() {
 	// cleanup
 	Config.Init("conf.json")
@@ -200,7 +270,7 @@ func Test2(t *testing.T) {
 	}()
 	prepare()
 	done := make(chan bool)
-	how_many := int(100)
+	how_many := int(10)
 	n := int(100)
 
 	// generate files
@@ -223,5 +293,36 @@ func Test2(t *testing.T) {
 	elapsed := end.Sub(start)
 	Log.Infoln("Time elapsed [ms]:", float64(elapsed)/1e6, "Req/s:", float64(how_many)*float64(n)/float64(elapsed)*1e9)
 	Log.Debugln("---> Shutting down")
+	shutdown()
+}
+
+// TODO: Maybe a different test that build channels before
+func Test3(t *testing.T) {
+	prepare()
+	done := make(chan bool)
+	how_many := int(100)
+	n := int(1)
+
+	// generate files
+	objects := make([][]byte, how_many*n)
+	table := make(map[int][sha1.Size]byte)
+	for i := 0; i < how_many*n; i++ {
+		objects[i] = make([]byte, 16)
+		_, err := rand.Read(objects[i])
+		ErrCheckFatal(err, "Random number error")
+		table[i] = sha1.Sum(objects[i])
+	}
+	start := time.Now()
+	go sender_many_many_process(n, how_many, done, objects)
+	go receiver_many_many_process(n, how_many, done, table)
+	for j := 0; j < 2*how_many; j++ {
+		<-done
+		Log.Debugln("---> Done", j)
+	}
+	end := time.Now()
+	elapsed := end.Sub(start)
+	Log.Infoln("Time elapsed [ms]:", float64(elapsed)/1e6, "Req/s:", float64(how_many)*float64(n)/float64(elapsed)*1e9)
+	Log.Debugln("---> Shutting down")
+
 	shutdown()
 }
